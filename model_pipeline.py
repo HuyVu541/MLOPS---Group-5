@@ -2,10 +2,12 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator, BranchPythonOperator, ShortCircuitOperator
 from airflow.utils.trigger_rule import TriggerRule
 from datetime import datetime, timedelta
+import mlflow
 
 from model_utils.model_engineering import train_model
 from model_utils.model_validation import evaluate_model
-# from model_utils.model_deployment import register_model, compare_models
+from model_utils.model_deployment import register_model, compare_models
+
 import logging
 # ==== Default DAG Config ====
 default_args = {
@@ -24,8 +26,11 @@ with DAG(
     schedule_interval=None,
     start_date=datetime(2025, 4, 1),
     catchup=False,
-    tags=["model_pipeline", "distilbert"],
+    tags=["model_pipeline", "LSTM"],
 ) as dag:
+    
+    mlflow.set_tracking_uri("/home/huyvu/airflow/mlruns")
+
 
     # 1. Train model
     def _train_model(**kwargs):
@@ -59,45 +64,44 @@ with DAG(
         python_callable=_evaluate_model
     )
 
-    # # 3. Compare model performance
-    # def _compare_models(**kwargs):
-    #     run_id = kwargs['ti'].xcom_pull(key="run_id")
-    #     return "register_model" if compare_models(
-    #         new_run_id=run_id,
-    #         experiment_name="SentimentAnalysis",
-    #         metric_key="accuracy"
-    #     ) else "skip_register"
+    # 3. Compare model performance
+    def _compare_models(**kwargs):
+        run_id = kwargs['ti'].xcom_pull(key="run_id")
+        return "register_model" if compare_models(
+            new_run_id=run_id,
+            experiment_name="LSTM",
+            metric_key="mape"
+        ) else "skip_register"
 
-    # compare_model_task = BranchPythonOperator(
-    #     task_id="compare_model",
-    #     python_callable=_compare_models,
-    #     provide_context=True
-    # )
+    compare_model_task = BranchPythonOperator(
+        task_id="compare_model",
+        python_callable=_compare_models,
+        provide_context=True
+    )
 
-    # # 4a. Register model if it's better
-    # def _register_model(**kwargs):
-    #     model_uri = kwargs['ti'].xcom_pull(key="pyfunc_model_uri")
-    #     register_model(
-    #         model_uri=model_uri,
-    #         model_name="distilbert_sentiment",
-    #         tags={"version": "auto", "source": "airflow"}
-    #     )
+    # 4a. Register model if it's better
+    def _register_model(**kwargs):
+        model_uri = kwargs['ti'].xcom_pull(key="pyfunc_model_uri")
+        register_model(
+            model_uri=model_uri,
+            model_name="LSTM",
+            tags={"version": "auto", "source": "airflow"}
+        )
 
-    # register_model_task = PythonOperator(
-    #     task_id="register_model",
-    #     python_callable=_register_model,
-    #     provide_context=True
-    # )
+    register_model_task = PythonOperator(
+        task_id="register_model",
+        python_callable=_register_model,
+        provide_context=True
+    )
 
-    # # 4b. Dummy skip task if model not better
-    # skip_register_task = PythonOperator(
-    #     task_id="skip_register",
-    #     python_callable=lambda: print("Skip register - model not better")
-    # )
+    # 4b. Dummy skip task if model not better
+    skip_register_task = PythonOperator(
+        task_id="skip_register",
+        python_callable=lambda: print("Skip register - model not better")
+    )
 
     # ==== Flow ==== #
-    train_model_task >> evaluate_model_task 
-    # >> compare_model_task
-    # compare_model_task >> register_model_task
-    # compare_model_task >> skip_register_task
+    train_model_task >> evaluate_model_task >> compare_model_task
+    compare_model_task >> register_model_task
+    compare_model_task >> skip_register_task
     logging.info('Done.')
