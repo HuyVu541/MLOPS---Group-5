@@ -11,6 +11,9 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error,
 import mlflow.sklearn
 import joblib
 import mlflow.keras
+import time
+import random
+import tensorflow as tf
 
 def load_data(query: str, db_uri: str):
     engine = create_engine(db_uri)
@@ -36,6 +39,13 @@ def create_sequences(X, y, ts):
     return np.array(Xs), np.array(ys)
 
 def create_lstm_model(input_shape, num_layers=1, units=256, dropout_rate=0.2, time_steps=30):
+    seed = int(time.time()) % (2**32 - 1)
+
+    # Set seeds
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
     model = Sequential()
     
     # First LSTM layer

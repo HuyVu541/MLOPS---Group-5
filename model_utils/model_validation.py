@@ -64,11 +64,11 @@ def evaluate_model(model_path: str, run_id: str, db_uri: str, query: str):
 
     # Load feature scaler
     feat_scaler = mlflow.sklearn.load_model(f"runs:/{run_id}/feat_scaler")
-    X = feat_scaler.inverse_transform(X)
+    X = feat_scaler.transform(X)
 
     # Load target scaler
     tgt_scaler = mlflow.sklearn.load_model(f"runs:/{run_id}/tgt_scaler")
-    y = tgt_scaler.inverse_transform(y.values.reshape(-1,1))
+    y = tgt_scaler.transform(y.values.reshape(-1,1))
 
     # 2. Load the pyfunc model
     model = model = mlflow.keras.load_model(f"runs:/{run_id}/LSTM")
