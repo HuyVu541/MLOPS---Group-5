@@ -8,12 +8,16 @@ from oauth2client.service_account import ServiceAccountCredentials
 from sqlalchemy import create_engine, text # Using SQLAlchemy for easier type mapping
 import psycopg2
 
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+USER = os.getenv("USER")
+
 def _create_table_if_not_exists(db_name, df, table_type):
-    db_uri = f"postgresql+psycopg2://huyvu:password@localhost:5432/{db_name}"
+    db_uri = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@localhost:5432/{db_name}"
     db_config = {
     'dbname': db_name,
-    'user': 'huyvu',
-    'password': 'password',
+    'user': DB_USER,
+    'password': DB_PASSWORD,
     'host': 'localhost',  # Use 'localhost' or your DB host
     'port': 5432  # Default PostgreSQL port
     }
@@ -49,8 +53,8 @@ def _create_table_if_not_exists(db_name, df, table_type):
 def insertIntoTable(db_name, df, table):
     db_config = {
         'dbname': db_name,
-        'user': 'huyvu',
-        'password': 'password',
+        'user': DB_USER,
+        'password': DB_PASSWORD,
         'host': 'localhost',
         'port': 5432
     }
@@ -61,7 +65,6 @@ def insertIntoTable(db_name, df, table):
     # Fetch existing 'time' values
     cur.execute(f"SELECT * FROM {table}")
     existing_times = set(str(row[0]) for row in cur.fetchall())
-    print(existing_times)
 
     # Filter out rows with existing 'time' values
     new_rows = df[~df['time'].isin(existing_times)]
@@ -80,7 +83,6 @@ def insertIntoTable(db_name, df, table):
     try:
         cur.executemany(query, tuples)
         conn.commit()
-        print(f"{len(tuples)} new rows inserted.")
     except Exception as error:
         print("Error:", error)
         conn.rollback()

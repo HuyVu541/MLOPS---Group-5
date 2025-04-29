@@ -1,12 +1,77 @@
 import pandas as pd
 import numpy as np
+from sqlalchemy import create_engine # Using SQLAlchemy for easier type mapping
+from sqlalchemy import create_engine
+import os 
 
-def preprocess_data(df):
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+def fill_empty(df):
     df_numerical = df.select_dtypes(include = 'number')
     df_numerical['time'] = df['time']
     df = df_numerical
     df['match_match_price'] = df['match_match_price'].replace(0, np.nan)
-    df.fillna(method='ffill', inplace=True)
-    df.fillna(method='bfill', inplace=True)
+    df = df.ffill()
+    df = df.bfill()
     df.dropna(axis = 1)
     return df  
+
+def construct_dataset(raw_db_name, raw_table_name, feature_db_name, feature_table_name, startfrom = 0, limit = None):
+    raw_db_uri = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@localhost:5432/{raw_db_name}"
+    feature_db_uri = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@localhost:5432/{feature_db_name}"
+    raw_query = f"SELECT * FROM {raw_table_name}"
+    feature_query = f"SELECT * FROM {feature_table_name}"
+
+    if limit is not None:
+        raw_query += f" ORDER BY time LIMIT {limit}"
+        feature_query += f" ORDER BY time LIMIT {limit}"
+
+    df = load_data(raw_query, raw_db_uri)
+    df = df[int(len(df) * startfrom):]
+    df = fill_empty(df)
+
+    # Feature set
+    FEATURES = [
+        'time',
+        'listing_ceiling',
+        'listing_floor',
+        'listing_ref_price',
+        'listing_listed_share',
+        'listing_prior_close_price',
+
+        'match_match_vol',
+        'match_accumulated_volume',
+        'match_accumulated_value',
+        'match_avg_match_price',
+        'match_highest',
+        'match_lowest',
+
+        'match_foreign_sell_volume',
+        'match_foreign_buy_volume',
+        'match_current_room',
+        'match_total_room',
+
+        'match_total_accumulated_value',
+        'match_total_accumulated_volume',
+        'match_reference_price',
+        'match_match_price' 
+    ]
+    
+    df = df[FEATURES]
+    df['time'] = pd.to_datetime(df['time'])
+    df = fill_empty(df)
+    
+    feature_df = load_data(feature_query, feature_db_uri)
+
+    df['time'] = pd.to_datetime(df['time'])
+    df = pd.merge(df, feature_df, on='time', how='left')
+    df = fill_empty(df)
+    return df
+
+def load_data(query: str, db_uri: str):
+    engine = create_engine(db_uri)
+    conn = engine.raw_connection()
+    df = pd.read_sql(query, con=conn)
+    conn.close()
+    return df

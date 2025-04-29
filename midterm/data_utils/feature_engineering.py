@@ -9,6 +9,9 @@ from sqlalchemy import create_engine, text # Using SQLAlchemy for easier type ma
 import psycopg2
 from data_utils.general_utils import _create_table_if_not_exists, insertIntoTable
 
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+USER = os.getenv("USER")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -112,8 +115,8 @@ def engineering_features(golden_database, golden_table_name, feature_store_datab
 
     db_config = {
         'dbname': golden_database,
-        'user': 'huyvu',
-        'password': 'password',
+        'user': DB_USER,
+        'password': DB_PASSWORD,
         'host': 'localhost',
         'port': 5432
     }

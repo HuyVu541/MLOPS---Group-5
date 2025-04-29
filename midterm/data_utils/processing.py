@@ -7,6 +7,10 @@ import psycopg2
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+USER = os.getenv("USER")
+
 def validate_table(database_file, table_name):
     """
     Validate if the table in the SQLite database exists and contains data.
@@ -28,8 +32,8 @@ def validate_table(database_file, table_name):
     try:
         db_config = {
         'dbname': database_file,
-        'user': 'huyvu',
-        'password': 'password',
+        'user': DB_USER,
+        'password': DB_PASSWORD,
         'host': 'localhost',
         'port': 5432
     }
