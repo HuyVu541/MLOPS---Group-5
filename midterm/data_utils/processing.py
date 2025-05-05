@@ -4,6 +4,7 @@ import logging
 import argparse
 import os
 import psycopg2
+from sqlalchemy import create_engine
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -39,17 +40,19 @@ def validate_table(database_file, table_name):
     }
 
         conn = psycopg2.connect(**db_config)
-        cur = conn.cursor()
 
-        # Fetch existing 'time' values
-        cur.execute(f"SELECT * FROM {table_name}")
-        df = cur.fetchall()
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", con=conn)
+        
         logging.info(f"Number of records found in '{table_name}': {len(df)}")
 
         if len(df) == 0:
             logging.warning(f"Table '{table_name}' exists but is empty.")
             # Depending on requirements, you might return True or False here.
             # Returning False as usually an empty table after ingestion is an issue.
+            return False
+        
+        if df['match_match_price'].isna().any():
+            logging.info('Empty price.')
             return False
 
         # Preview data
