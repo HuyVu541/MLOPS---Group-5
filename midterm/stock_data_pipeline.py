@@ -11,10 +11,11 @@ from data_utils.processing import validate_table
 from data_utils.feature_engineering import engineering_features
 
 # --- Configuration ---
+
 PG_HOST = os.environ.get("PG_HOST", "localhost")
 PG_PORT = os.environ.get("PG_PORT", "5432")
-PG_USER = os.environ.get("PG_USER", "huyvu")
-PG_PASSWORD = os.environ.get("PG_PASSWORD", "password") 
+PG_USER = os.getenv("DB_USER")
+PG_PASSWORD = os.getenv("DB_PASSWORD")
 PG_GOLDEN_DBNAME = os.environ.get("PG_GOLDEN_DBNAME", "raw_data")
 PG_FEATURE_DBNAME = os.environ.get("PG_FEATURE_DBNAME", "feature_db")
 os.environ['GOOGLE_SHEET_ID'] = "1yjmPxKbNBRD6DACtkq4l_Xp9O7ldmWujypKE9NhC6Z0"

@@ -8,6 +8,8 @@ from model_utils.model_validation import evaluate_model
 from model_utils.model_deployment import register_model, compare_models
 from model_utils.model_serving import model_serving_setup
 import logging
+import os
+
 # ==== Default DAG Config ====
 default_args = {
     "owner": "airflow",
@@ -16,6 +18,8 @@ default_args = {
     "retries": 0,
     "retry_delay": timedelta(minutes=5),
 }
+
+USER = os.getenv("USER")
 
 # ==== DAG Definition ====
 with DAG(
@@ -28,7 +32,7 @@ with DAG(
     tags=["model_pipeline", "LSTM"],
 ) as dag:
     
-    mlflow.set_tracking_uri("file:/home/huyvu/airflow/mlruns")
+    mlflow.set_tracking_uri(f"file:/home/{USER}/airflow/mlruns")
 
 
     # 1. Train model
