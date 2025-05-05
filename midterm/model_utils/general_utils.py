@@ -23,10 +23,6 @@ def construct_dataset(raw_db_name, raw_table_name, feature_db_name, feature_tabl
     raw_query = f"SELECT * FROM {raw_table_name}"
     feature_query = f"SELECT * FROM {feature_table_name}"
 
-    if limit is not None:
-        raw_query += f" ORDER BY time LIMIT {limit}"
-        feature_query += f" ORDER BY time LIMIT {limit}"
-
     df = load_data(raw_query, raw_db_uri)
     df = df[int(len(df) * startfrom):]
     df = fill_empty(df)
@@ -67,6 +63,8 @@ def construct_dataset(raw_db_name, raw_table_name, feature_db_name, feature_tabl
     df['time'] = pd.to_datetime(df['time'])
     df = pd.merge(df, feature_df, on='time', how='left')
     df = fill_empty(df)
+    if limit:
+        return df.tail(limit)
     return df
 
 def load_data(query: str, db_uri: str):
