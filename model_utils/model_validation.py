@@ -1,11 +1,13 @@
-import argparse
 import pandas as pd
 import numpy as np
-import mlflow.sklearn
 import mlflow.keras
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
-from sqlalchemy import create_engine
+import mlflow
+from model_utils.general_utils import construct_dataset
+import joblib
 import os
+
+USER = os.getenv('USER')
 
 def create_sequences(X, y, ts = 30):
     Xs, ys = [], []
@@ -14,15 +16,10 @@ def create_sequences(X, y, ts = 30):
         ys.append(y[i:i+ts])
     return np.array(Xs), np.array(ys)
 
-def get_data_from_postgres(query: str, db_uri: str):
-    engine = create_engine(db_uri)
-    conn = engine.raw_connection()
-    df = pd.read_sql(query, con=conn)
-    conn.close()
-    return df
 
+def evaluate_model(run_id: str, raw_db_name: str, raw_table_name: str, feature_db_name: str, feature_table_name: str):
+    mlflow.set_tracking_uri(f"file:/home/{USER}/airflow/mlruns")
 
-def evaluate_model(model_path: str, run_id: str, db_uri: str, query: str):
     """
     Validate the model using test data from PostgreSQL.
 
@@ -34,82 +31,98 @@ def evaluate_model(model_path: str, run_id: str, db_uri: str, query: str):
     Returns:
         None
     """
+    experiment_name = "LSTM"
+    try:
+        mlflow.create_experiment(experiment_name)  
+    except mlflow.exceptions.MlflowException:
+        pass  
+    mlflow.set_experiment(experiment_name)
     # 1. Load test data
-    df = get_data_from_postgres(query, db_uri)
-    FEATURES = [
-        'listing_ceiling',
-        'listing_floor',
-        'listing_ref_price',
-        'listing_listed_share',
-        'listing_prior_close_price',
+    with mlflow.start_run() as run:
+        mlflow.set_tag("phase", "validating")
+        mlflow.set_tracking_uri(f"file:/home/{USER}/airflow/mlruns")
 
-        'match_match_vol',
-        'match_accumulated_volume',
-        'match_accumulated_value',
-        'match_avg_match_price',
-        'match_highest',
-        'match_lowest',
+        df = construct_dataset(raw_db_name, raw_table_name, feature_db_name, feature_table_name, startfrom=0.8)
 
-        'match_foreign_sell_volume',
-        'match_foreign_buy_volume',
-        'match_current_room',
-        'match_total_room',
+        FEATURES = list(df.columns.values)
+        FEATURES.remove('time')
+        TARGET = ['match_match_price']
+        FEATURES.remove('match_match_price')
+            
 
-        'match_total_accumulated_value',
-        'match_total_accumulated_volume',
-        'match_reference_price' 
-    ]
-    X = df[FEATURES]
-    y = df['match_match_price']
-
-    # Load feature scaler
-    feat_scaler = mlflow.sklearn.load_model(f"runs:/{run_id}/feat_scaler")
-    X = feat_scaler.transform(X)
-
-    # Load target scaler
-    tgt_scaler = mlflow.sklearn.load_model(f"runs:/{run_id}/tgt_scaler")
-    y = tgt_scaler.transform(y.values.reshape(-1,1))
-
-    # 2. Load the pyfunc model
-    model = model = mlflow.keras.load_model(f"runs:/{run_id}/LSTM")
         
-    X, y = create_sequences(X, y)
-    y = y.reshape(-1, 30)
-    
-    # 4. Derive hard predictions
-    y_pred = model.predict(X)
-    
-    print('y_pred shape:', y_pred.shape)
-    print('y shape:', y.shape)
-    # 5. Compute metrics
-    mae = mean_absolute_error(y, y_pred)
-    mse = mean_squared_error(y, y_pred)
-    mape = mean_absolute_percentage_error(y, y_pred)
-    
-    # 6. Compiling metrics
-    metrics = {'mae': mae, 'mape': mape, 'mse': mse}
-    
-    # 7. Logging to MLFLOW
-    mlflow.log_metrics(metrics)
-    # 8. Print & save report
-    print('MAE: ', mae)
-    print('MSE: ', mape)
-    print('MAPE: ', mape)
 
-    report = {
-        "mae": mae,
-        "mse": mse,
-        "mape": mape,
-    }
-    pd.DataFrame([report]).to_csv("validation_report.csv", index=False)
-    print("Saved validation_report.csv")
+        X = df[FEATURES].values
+        y = df[TARGET]
 
+        # Load feature scaler
+        feat_local_path = mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}/feat_scaler/feat_scaler.pkl")
+        feat_scaler = joblib.load(feat_local_path)
+        
+        # Load target scaler
+        tgt_local_path = mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}/tgt_scaler/tgt_scaler.pkl")
+        tgt_scaler = joblib.load(tgt_local_path)
 
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser(description="Validate a pyfunc MLflow model using PostgreSQL data.")
-#     parser.add_argument("--model-path", type=str, required=True,
-#                         help="MLflow model URI, e.g. runs:/<run_id>/distilbert_sentiment")
-#     parser.add_argument("--db-uri", type=str, required=True, help="PostgreSQL connection URI.")
-#     parser.add_argument("--query", type=str, required=True, help="SQL query to fetch test data.")
-#     args = parser.parse_args()
-#     evaluate_model(args.model_path, args.db_uri, args.query)
+        X = feat_scaler.transform(X)
+
+        y = y.values.flatten()
+        y = tgt_scaler.transform(y.reshape(-1,1))
+
+        model_name = 'LSTM'
+        # 2. Load the pyfunc model
+        model = model = mlflow.keras.load_model(f"runs:/{run_id}/{model_name}")
+        
+        X, y = create_sequences(X, y)
+        
+        y = y.reshape(-1, 30)
+
+        # print(y[0:10])
+        # print(y_pred[0:10])
+        
+        # 4. Derive hard predictions
+        y_pred = tgt_scaler.inverse_transform(model.predict(X))
+        y = tgt_scaler.inverse_transform(y)
+        print('y_pred shape:', y_pred.shape)
+        print('y shape:', y.shape)
+        
+        # 5. Compute metrics
+        mae = mean_absolute_error(y, y_pred)
+        mse = mean_squared_error(y, y_pred)
+        mape = mean_absolute_percentage_error(y, y_pred)
+        
+        # 6. Compiling metrics
+        metrics = {'mae': mae, 'mape': mape, 'mse': mse}
+        
+        # 7. Logging to MLFLOW
+        mlflow.log_metrics(metrics)
+
+        mlflow.log_param("model_name", model_name)
+        mlflow.log_param("epochs", 5)
+        # mlflow.log_param("lr", 2e-5)
+
+        mlflow.keras.log_model(model, artifact_path = model_name)
+
+        # Save locally
+        joblib.dump(feat_scaler, "feat_scaler.pkl")
+        joblib.dump(tgt_scaler, "tgt_scaler.pkl")
+
+        # Log to MLflow
+        mlflow.log_artifact("feat_scaler.pkl", artifact_path="feat_scaler")
+        mlflow.log_artifact("tgt_scaler.pkl", artifact_path="tgt_scaler")
+
+        # 8. Print & save report
+        print('MAE: ', mae)
+        print('MSE: ', mape)
+        print('MAPE: ', mape)
+
+        report = {
+            "mae": mae,
+            "mse": mse,
+            "mape": mape,
+        }
+        pd.DataFrame([report]).to_csv("validation_report.csv", index=False)
+        print("Saved validation_report.csv")
+    run_id = run.info.run_id
+    # pytorch_uri = f"runs:/{run_id}/{model_name}_pytorch"
+    model_uri  = f"runs:/{run_id}/{model_name}"
+    return {"run_id": run_id, 'model_uri': model_uri}

@@ -3,93 +3,92 @@
 import mlflow
 import mlflow.keras
 import pandas as pd
+import os
+
+USER = os.getenv('USER')
+
+def model_serving_setup(run_id):
+    """Set up model serving infrastructure."""
+    print("Setting up model serving...")
+
+    # In a real scenario, this might:
+    # 1. Deploy to a Flask/FastAPI service
+    # 2. Update a Kubernetes deployment
+    # 3. Push to a model serving platform like SageMaker
+
+    # For this example, we'll simulate deployment by downloading the model
+    mlflow.set_tracking_uri(f"file:/home/{USER}/airflow/mlruns")
+
+    # Simulate preparing a serving environment
+    serving_dir = os.path.expanduser("~/airflow/dags/serving")
+    os.makedirs(serving_dir, exist_ok=True)
+
+    # Full path for app.py
+    serving_path = os.path.join(serving_dir, "app.py")
+
+    # Download the model to the serving directory
+    # In a real scenario, you might use MLflow's built-in serving capabilities
+    # Create a simple prediction script
+    prediction_script = f"""
+from fastapi import FastAPI, File, UploadFile
+import mlflow
+import pandas as pd
+import json
+import numpy as np
+import sys
+# from serving.custom_predict import predict
+import joblib
+# Load the model once at startup    
+mlflow.set_tracking_uri("file:/home/{USER}/airflow/mlruns")
+
+run_id = '{run_id}'
+model_name = 'LSTM'
+
+model = mlflow.keras.load_model(f"runs:/{{run_id}}/{{model_name}}")
+
+# Load feature scaler
+
+feat_local_path = mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{{run_id}}/feat_scaler/feat_scaler.pkl")
+feat_scaler = joblib.load(feat_local_path)
+
+# Load target scaler
+tgt_local_path = mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{{run_id}}/tgt_scaler/tgt_scaler.pkl")
+tgt_scaler = joblib.load(tgt_local_path)
 
 
-# Find the best model from MLflow
-def find_best_model():
-    """
-    Find the best model from MLflow.
+app = FastAPI()
 
-    Returns:
-        str: URI of the best model.
-    """
-    # Get the list of all runs
-    runs = mlflow.search_runs(order_by=["metrics.test_accuracy desc"])
-    best_run = runs.iloc[0]
-    best_model_uri = f"runs:/{best_run.run_id}/model"
-    return best_model_uri
+@app.get("/")
+def home():
+    return {{"message": "Model Serving API. Use POST /predict with a JSON file to get predictions."}}
 
+# Prediction endpoint: accepts a JSON file upload
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    # Read the uploaded JSON file
+    contents = await file.read()
+    data = np.array(json.loads(contents.decode("utf-8")))
 
-def load_model(model_uri: str):
-    """
-    Load a model from MLflow.
+    if data.shape != (30,26):
+        raise ValueError(f"Expected input shape (30, 26), got {{data.shape}}")
+    
+    # Convert the input data to a numpy array and reshape for the model
+    data = feat_scaler.inverse_transform(data)
+    data = data.reshape(1, 30, 26)  # Reshape based on your model's expected input
+        
+    # Make predictions using the model
+    predictions = model.predict(data)
+    predictions = tgt_scaler.inverse_transform(model.predict(data))
+    
+    # Return predictions in JSON format
+    return {{"predictions": predictions.tolist()}}
 
-    Args:
-        model_uri (str): URI of the model in MLflow.
+# To launch app: uvicorn app:app --reload
+"""
+    
+    with open(serving_path, "w") as f:
+        f.write(prediction_script)
 
-    Returns:
-        model: Loaded model.
-    """
-    model = mlflow.keras.load_model(model_uri)
-    return model
+    print(f"Model serving setup complete at {serving_dir}")
 
-
-def serve_model(model_uri: str, input_data: pd.DataFrame):
-    """
-    Serve a model using MLflow.
-
-    Args:
-        model_uri (str): URI of the model in MLflow.
-        input_data (pd.DataFrame): Input data for prediction.
-
-    Returns:
-        pd.DataFrame: Predictions made by the model.
-    """
-    # Load the model
-    model = load_model(model_uri)
-
-    # Make predictions
-    predictions = model.predict(input_data)
-    return predictions
-
-
-# serve model as a REST API
-def serve_model_rest_api(model_uri: str):
-    """
-    Serve a model as a REST API using Flask.
-
-    Args:
-        model_uri (str): URI of the model in MLflow.
-        input_data (pd.DataFrame): Input data for prediction.
-
-    Returns:
-        str: JSON response with predictions.
-    """
-    from flask import Flask, request, jsonify
-
-    app = Flask(__name__)
-
-    @app.route("/predict", methods=["POST"])
-    def predict():
-        data = request.get_json(force=True)
-        input_df = pd.DataFrame(data)
-        predictions = serve_model(model_uri, input_df)
-        return jsonify(predictions.tolist())
-
-    return app
-
-
-# if __name__ == "__main__":
-#     # Example usage
-#     model_uri = find_best_model()
-
-#     # Load the model
-#     model = load_model(model_uri)
-#     print(f"Model loaded from {model_uri}")
-
-#     input_data = pd.read_csv("input_data.csv")  # Replace with your input data file
-#     predictions = serve_model(model_uri, input_data)
-#     print(predictions)
-
-#     # Serve the model as a REST API
-#     app = serve_model_rest_api(model_uri)
+    # return {"serving_dir": serving_dir, "model_uri": model_uri}
