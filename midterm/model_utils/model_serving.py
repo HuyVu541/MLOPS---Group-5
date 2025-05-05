@@ -20,7 +20,7 @@ def model_serving_setup(run_id):
     mlflow.set_tracking_uri(f"file:/home/{USER}/airflow/mlruns")
 
     # Simulate preparing a serving environment
-    serving_dir = os.path.expanduser("~/airflow/serving")
+    serving_dir = os.path.expanduser("~/airflow/dags/serving")
     os.makedirs(serving_dir, exist_ok=True)
 
     # Full path for app.py
@@ -75,7 +75,7 @@ async def predict(file: UploadFile = File(...)):
     # Convert the input data to a numpy array and reshape for the model
     data = feat_scaler.inverse_transform(data)
     data = data.reshape(1, 30, 26)  # Reshape based on your model's expected input
-
+        
     # Make predictions using the model
     predictions = model.predict(data)
     predictions = tgt_scaler.inverse_transform(model.predict(data))

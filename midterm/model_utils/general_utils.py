@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine # Using SQLAlchemy for easier type mapping
-from sqlalchemy import create_engine
 import os 
 
 DB_USER = os.getenv("DB_USER")
@@ -14,6 +13,7 @@ def fill_empty(df):
     df['match_match_price'] = df['match_match_price'].replace(0, np.nan)
     df = df.ffill()
     df = df.bfill()
+    df = df.fillna(0)
     df.dropna(axis = 1)
     return df  
 
