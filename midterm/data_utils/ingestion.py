@@ -12,7 +12,7 @@ from data_utils.general_utils import _create_table_if_not_exists, insertIntoTabl
 
 # --- Configuration ---
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-SHEET_NUMBER = os.environ.get("GOOGLE_SHEET_NUMBER", "Sheet3") 
+SHEET_NUMBER = os.environ.get("GOOGLE_SHEET_NUMBER", "Sheet4") 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s') 
 
