@@ -20,6 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def fetch_data_from_google_sheets(sheet_id, expected_columns):
     """
     Fetches data from the configured Google Sheet and converts specific columns to appropriate types.
+    Excludes the final 30 rows from the fetched dataset.
     """
     if not sheet_id:
         logging.error("Missing required environment variable: GOOGLE_SHEET_ID")
@@ -35,12 +36,17 @@ def fetch_data_from_google_sheets(sheet_id, expected_columns):
         logging.error(f"Error connecting to or reading from Google Sheets: {e}")
         raise
 
-    if len(df)==0:
+    original_len = len(df)
+    if original_len == 0:
         logging.warning("No data found in the Google Sheet.")
         return pd.DataFrame()
+    elif original_len <= 30:
+        logging.warning(f"Only {original_len} rows fetched — skipping ingestion as there are fewer than or equal to 30 rows.")
+        return pd.DataFrame()
 
-    # df = pd.DataFrame(data)
-    logging.info(f"Fetched {len(df)} rows from Google Sheet.")
+    # Exclude the final 30 rows
+    df = df.iloc[:-30].reset_index(drop=True)
+    logging.info(f"Fetched {original_len} rows from Google Sheet, using {len(df)} rows after excluding the last 30.")
 
     # Verify required columns exist
     missing_cols = [col for col in expected_columns if col not in df.columns]
@@ -48,9 +54,9 @@ def fetch_data_from_google_sheets(sheet_id, expected_columns):
         logging.error(f"Missing expected columns in fetched data: {missing_cols}.")
         raise
 
-    # Convert empty strings to None 
+    # Convert empty strings to None
     df = df.replace('', None)
-
+    
     # --- Specific Data Type Conversion ---
     logging.info("Converting data types for specific columns...")
 
@@ -58,10 +64,10 @@ def fetch_data_from_google_sheets(sheet_id, expected_columns):
     df.info(verbose=True, show_counts=True) 
     logging.info(f"DataFrame head:\n{df.head().to_string()}")
 
-    # Reorder columns to expected order if necessary 
+    # Reorder columns to expected order if necessary
     present_expected_cols = [col for col in expected_columns if col in df.columns]
     df = df[present_expected_cols]
-    df.rename(columns={'Time': 'time'}, inplace= True)
+    df.rename(columns={'Time': 'time'}, inplace=True)
 
     return df
 
